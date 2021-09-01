@@ -134,6 +134,7 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 /* Spectral Scan */
 #define LGW_SPECTRAL_SCAN_RESULT_SIZE 33 /* The number of results returned by spectral scan function, to be used for memory allocation */
 
+#define LGW_RESET_SCRIPT_PATH "/usr/bin/reset_lgw.sh"
 /* -------------------------------------------------------------------------- */
 /* --- PUBLIC TYPES --------------------------------------------------------- */
 

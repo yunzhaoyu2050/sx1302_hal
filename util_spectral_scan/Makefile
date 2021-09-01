@@ -41,7 +41,7 @@ APP_LIBS := -lloragw -lm -ltinymt32 -lrt
 LIB_PATH := ../libloragw
 
 ### Expand build options
-CFLAGS := -std=c99 $(WARN_CFLAGS) $(OPT_CFLAGS) $(DEBUG_CFLAGS)
+LGW_CFLAGS := -std=c99 $(WARN_CFLAGS) $(OPT_CFLAGS) $(DEBUG_CFLAGS)
 CC := $(CROSS_COMPILE)gcc
 AR := $(CROSS_COMPILE)ar
 
@@ -74,7 +74,7 @@ $(OBJDIR):
 
 ### Compile main program
 $(OBJDIR)/$(APP_NAME).o: src/$(APP_NAME).c | $(OBJDIR)
-	$(CC) -c $< -o $@ $(CFLAGS) -Iinc -I../libloragw/inc
+	$(CC) -c $< -o $@ $(LGW_CFLAGS) -Iinc -I../libloragw/inc
 
 ### Link everything together
 $(APP_NAME): $(OBJDIR)/$(APP_NAME).o $(LIB_PATH)/libloragw.a

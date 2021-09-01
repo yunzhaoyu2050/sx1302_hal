@@ -217,13 +217,14 @@ int sx1302_config_gpio(void) {
 
     err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_0_SELECTION, GPIO_CFG_REGISTER); /* GPIO_0 => CONFIG_DONE */
     CHECK_ERR(err);
-    err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_1_SELECTION, GPIO_CFG_REGISTER); /* GPIO_1 => UNUSED */
+    // 修改gpio1为rx on, gpio4为unused at 2021.05.24 by zhaoyu
+    err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_1_SELECTION, GPIO_CFG_STATUS); /* GPIO_1 => UNUSED */
     CHECK_ERR(err);
     err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_2_SELECTION, GPIO_CFG_STATUS);   /* GPIO_2 => Tx ON */
     CHECK_ERR(err);
     err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_3_SELECTION, GPIO_CFG_REGISTER); /* GPIO_3 => UNUSED */
     CHECK_ERR(err);
-    err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_4_SELECTION, GPIO_CFG_STATUS);   /* GPIO_4 => RX ON (PKT_RECEIVE_TOGGLE_OUT) */
+    err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_4_SELECTION, GPIO_CFG_REGISTER);   /* GPIO_4 => RX ON (PKT_RECEIVE_TOGGLE_OUT) */
     CHECK_ERR(err);
     err = lgw_reg_w(SX1302_REG_GPIO_GPIO_SEL_5_SELECTION, GPIO_CFG_REGISTER); /* GPIO_5 => UNUSED */
     CHECK_ERR(err);

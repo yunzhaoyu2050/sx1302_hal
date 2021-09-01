@@ -55,6 +55,10 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 #include "loragw_reg.h"
 #include "loragw_gps.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 /* -------------------------------------------------------------------------- */
 /* --- PRIVATE MACROS ------------------------------------------------------- */
 
@@ -63,7 +67,19 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
 #define STR(x)          STRINGIFY(x)
 
 #define RAND_RANGE(min, max) (rand() % (max + 1 - min) + min)
+#define ENABLE_TEMP_SENSOR 0
 
+#define LOG_JS_DATA_PATH "/var/log/lorawan_gateway/"
+#define LOG_JS_DATA_FILE "gw_js_data.log"
+int g_save_data_fd = -1;
+char save_data_buf[2048];
+
+#define LOG_JS_UP_DATA_FILE "gw_js_up_data.log"
+int g_save_up_data_fd = -1;
+char save_up_data_buf[2048];
+#define LOG_JS_DOWN_DATA_FILE "gw_js_down_data.log"
+int g_save_down_data_fd = -1;
+char save_down_data_buf[2048];
 /* -------------------------------------------------------------------------- */
 /* --- PRIVATE CONSTANTS ---------------------------------------------------- */
 
@@ -314,6 +330,7 @@ static void usage( void )
 }
 
 static void sig_handler(int sigio) {
+    close(g_save_data_fd);
     if (sigio == SIGQUIT) {
         quit_sig = true;
     } else if ((sigio == SIGINT) || (sigio == SIGTERM)) {
@@ -1419,6 +1436,7 @@ static int send_tx_ack(uint8_t token_h, uint8_t token_l, enum jit_error_e error,
 }
 
 /* -------------------------------------------------------------------------- */
+
 /* --- MAIN FUNCTION -------------------------------------------------------- */
 
 int main(int argc, char ** argv)
@@ -1481,8 +1499,9 @@ int main(int argc, char ** argv)
     uint32_t trig_tstamp;
     uint32_t inst_tstamp;
     uint64_t eui;
+#if ENABLE_TEMP_SENSOR
     float temperature;
-
+#endif
     /* statistics variable */
     time_t t;
     char stat_timestamp[24];
@@ -1641,7 +1660,7 @@ int main(int argc, char ** argv)
 
     if (com_type == LGW_COM_SPI) {
         /* Board reset */
-        if (system("./reset_lgw.sh start") != 0) {
+        if (system(LGW_RESET_SCRIPT_PATH" start") != 0) {
             printf("ERROR: failed to reset SX1302, check your reset_lgw.sh script\n");
             exit(EXIT_FAILURE);
         }
@@ -1709,6 +1728,27 @@ int main(int argc, char ** argv)
             exit(EXIT_FAILURE);
         }
     }
+
+    g_save_data_fd = open(LOG_JS_DATA_PATH LOG_JS_DATA_FILE, O_WRONLY|O_CREAT, 0755);
+    if (g_save_data_fd < 0) { 
+        MSG("(ERROR: open js data file failed\n");
+        exit(EXIT_FAILURE);
+    }
+    memset(save_data_buf, 0, sizeof(save_data_buf));
+
+    g_save_up_data_fd = open(LOG_JS_DATA_PATH LOG_JS_UP_DATA_FILE, O_WRONLY|O_CREAT, 0755);
+    if (g_save_up_data_fd < 0) { 
+        MSG("(ERROR: open js up data file failed\n");
+        exit(EXIT_FAILURE);
+    }
+    memset(save_up_data_buf, 0, sizeof(save_up_data_buf));
+
+    g_save_down_data_fd = open(LOG_JS_DATA_PATH LOG_JS_DOWN_DATA_FILE, O_WRONLY|O_CREAT, 0755);
+    if (g_save_down_data_fd < 0) { 
+        MSG("(ERROR: open js down data file failed\n");
+        exit(EXIT_FAILURE);
+    }
+    memset(save_down_data_buf, 0, sizeof(save_down_data_buf));
 
     /* configure signal handling */
     sigemptyset(&sigact.sa_mask);
@@ -1823,16 +1863,41 @@ int main(int argc, char ** argv)
         printf("# RF packets forwarded: %u (%u bytes)\n", cp_up_pkt_fwd, cp_up_payload_byte);
         printf("# PUSH_DATA datagrams sent: %u (%u bytes)\n", cp_up_dgram_sent, cp_up_network_byte);
         printf("# PUSH_DATA acknowledged: %.2f%%\n", 100.0 * up_ack_ratio);
+
+        // add by zhaoyu for save log json data at 2021.08.26
+        memset(save_data_buf, 0, sizeof(save_data_buf));
+        int len = snprintf(save_data_buf, sizeof(save_data_buf), "{\"utc\":\"%s\", \"up_rf_rc\":%u, \"up_crcok\":%.2f%%, \"up_crcfa\":%.2f%%, \"up_crcno\":%.2f%%, \"up_rf_fo\":%u, \"up_rf_fo_bt\":%u, \"up_pushsent\":%u, \"up_pushsent_bt\":%u, \"up_pushack\":%.2f%%, " , 
+            stat_timestamp, cp_nb_rx_rcv, 100.0 * rx_ok_ratio, 100.0 * rx_bad_ratio, 100.0 * rx_nocrc_ratio, cp_up_pkt_fwd, cp_up_payload_byte, cp_up_dgram_sent, cp_up_network_byte, 100.0 * up_ack_ratio);
+        write(g_save_data_fd, save_data_buf, len);
+
         printf("### [DOWNSTREAM] ###\n");
         printf("# PULL_DATA sent: %u (%.2f%% acknowledged)\n", cp_dw_pull_sent, 100.0 * dw_ack_ratio);
         printf("# PULL_RESP(onse) datagrams received: %u (%u bytes)\n", cp_dw_dgram_rcv, cp_dw_network_byte);
         printf("# RF packets sent to concentrator: %u (%u bytes)\n", (cp_nb_tx_ok+cp_nb_tx_fail), cp_dw_payload_byte);
         printf("# TX errors: %u\n", cp_nb_tx_fail);
+
+        // add by zhaoyu for save log json data at 2021.08.27
+        memset(save_data_buf, 0, sizeof(save_data_buf));
+        len = snprintf(save_data_buf, sizeof(save_data_buf), "\"down_pullsent\":%u, \"down_pullack\":%.2f%%, \"down_pullrc\":%u, \"down_pullrc_bt\":%u, \"down_rf_sent\":%u, \"down_rf_sent_bt\":%u, \"down_txerror\":%u, " , 
+            cp_dw_pull_sent, 100.0 * dw_ack_ratio, cp_dw_dgram_rcv, cp_dw_network_byte, (cp_nb_tx_ok+cp_nb_tx_fail), cp_dw_payload_byte, cp_nb_tx_fail);
+        write(g_save_data_fd, save_data_buf, len);
+
         if (cp_nb_tx_requested != 0 ) {
             printf("# TX rejected (collision packet): %.2f%% (req:%u, rej:%u)\n", 100.0 * cp_nb_tx_rejected_collision_packet / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_collision_packet);
             printf("# TX rejected (collision beacon): %.2f%% (req:%u, rej:%u)\n", 100.0 * cp_nb_tx_rejected_collision_beacon / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_collision_beacon);
             printf("# TX rejected (too late): %.2f%% (req:%u, rej:%u)\n", 100.0 * cp_nb_tx_rejected_too_late / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_too_late);
             printf("# TX rejected (too early): %.2f%% (req:%u, rej:%u)\n", 100.0 * cp_nb_tx_rejected_too_early / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_too_early);
+
+            // add by zhaoyu for save log json data at 2021.08.27
+            memset(save_data_buf, 0, sizeof(save_data_buf));
+            len = snprintf(save_data_buf, sizeof(save_data_buf), 
+                "\"down_tx_reject_packet\":%.2f%%, \"down_tx_reject_packet_req\":%u, \"down_tx_reject_packet_rej\":%u, \"down_tx_reject_beacon\":%.2f%%, \"down_tx_reject_req\":%u, \"down_tx_reject_req\":%u, " \
+                "\"down_tx_reject_late\":%.2f%%, \"down_tx_reject_late_req\":%u, \"down_tx_reject_late_rej\":%u, \"down_tx_reject_early\":%.2f%%, \"down_tx_reject_early_req\":%u, \"down_tx_reject_early_rej\":%u, " , 
+                100.0 * cp_nb_tx_rejected_collision_packet / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_collision_packet,
+                100.0 * cp_nb_tx_rejected_collision_beacon / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_collision_beacon,
+                100.0 * cp_nb_tx_rejected_too_late / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_too_late,
+                100.0 * cp_nb_tx_rejected_too_early / cp_nb_tx_requested, cp_nb_tx_requested, cp_nb_tx_rejected_too_early);
+            write(g_save_data_fd, save_data_buf, len);
         }
         printf("### SX1302 Status ###\n");
         pthread_mutex_lock(&mx_concent);
@@ -1841,13 +1906,30 @@ int main(int argc, char ** argv)
         pthread_mutex_unlock(&mx_concent);
         if (i != LGW_HAL_SUCCESS) {
             printf("# SX1302 counter unknown\n");
+
+            // add by zhaoyu for save log json data at 2021.08.27
+            memset(save_data_buf, 0, sizeof(save_data_buf));
+            len = snprintf(save_data_buf, sizeof(save_data_buf), "\"stat_if\":%s, " ,"unknown");
+            write(g_save_data_fd, save_data_buf, len);
         } else {
             printf("# SX1302 counter (INST): %u\n", inst_tstamp);
             printf("# SX1302 counter (PPS):  %u\n", trig_tstamp);
+
+            // add by zhaoyu for save log json data at 2021.08.27
+            memset(save_data_buf, 0, sizeof(save_data_buf));
+            len = snprintf(save_data_buf, sizeof(save_data_buf), "\"stat_inst\":%u, \"stat_pps\":%u, " ,inst_tstamp, trig_tstamp);
+            write(g_save_data_fd, save_data_buf, len);
         }
         printf("# BEACON queued: %u\n", cp_nb_beacon_queued);
         printf("# BEACON sent so far: %u\n", cp_nb_beacon_sent);
         printf("# BEACON rejected: %u\n", cp_nb_beacon_rejected);
+
+        // add by zhaoyu for save log json data at 2021.08.27
+        memset(save_data_buf, 0, sizeof(save_data_buf));
+        len = snprintf(save_data_buf, sizeof(save_data_buf), "\"stat_beaconqueue\":%u, \"stat_beaconsent\":%u, \"stat_beaconreject\":%u, ", 
+            cp_nb_beacon_queued, cp_nb_beacon_sent, cp_nb_beacon_rejected);
+        write(g_save_data_fd, save_data_buf, len);
+
         printf("### [JIT] ###\n");
         /* get timestamp captured on PPM pulse  */
         jit_print_queue (&jit_queue[0], false, DEBUG_LOG);
@@ -1858,37 +1940,84 @@ int main(int argc, char ** argv)
             /* no need for mutex, display is not critical */
             if (gps_ref_valid == true) {
                 printf("# Valid time reference (age: %li sec)\n", (long)difftime(time(NULL), time_reference_gps.systime));
+
+                // add by zhaoyu for save log json data at 2021.08.27
+                memset(save_data_buf, 0, sizeof(save_data_buf));
+                len = snprintf(save_data_buf, sizeof(save_data_buf), "\"gps_valid_time\":%li, ", (long)difftime(time(NULL), time_reference_gps.systime));
+                write(g_save_data_fd, save_data_buf, len);
             } else {
                 printf("# Invalid time reference (age: %li sec)\n", (long)difftime(time(NULL), time_reference_gps.systime));
+
+                // add by zhaoyu for save log json data at 2021.08.27
+                memset(save_data_buf, 0, sizeof(save_data_buf));
+                len = snprintf(save_data_buf, sizeof(save_data_buf), "\"gps_invalid_time\":%li, ", (long)difftime(time(NULL), time_reference_gps.systime));
+                write(g_save_data_fd, save_data_buf, len);
             }
             if (coord_ok == true) {
                 printf("# GPS coordinates: latitude %.5f, longitude %.5f, altitude %i m\n", cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt);
+
+                // add by zhaoyu for save log json data at 2021.08.27
+                memset(save_data_buf, 0, sizeof(save_data_buf));
+                len = snprintf(save_data_buf, sizeof(save_data_buf), "\"gps_lat\":%.5f, \"gps_lon\":%.5f, \"gps_alt\":%i, ", cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt);
+                write(g_save_data_fd, save_data_buf, len);
             } else {
                 printf("# no valid GPS coordinates available yet\n");
+
+                // add by zhaoyu for save log json data at 2021.08.27
+                memset(save_data_buf, 0, sizeof(save_data_buf));
+                len = snprintf(save_data_buf, sizeof(save_data_buf), "\"gps_coord_info\":%d, ", 0);
+                write(g_save_data_fd, save_data_buf, len);
             }
         } else if (gps_fake_enable == true) {
             printf("# GPS *FAKE* coordinates: latitude %.5f, longitude %.5f, altitude %i m\n", cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt);
+
+            // add by zhaoyu for save log json data at 2021.08.27
+            memset(save_data_buf, 0, sizeof(save_data_buf));
+            len = snprintf(save_data_buf, sizeof(save_data_buf), "\"gps_fake_lat\":%.5f, \"gps_fake_lon\":%.5f, \"gps_fake_alt\":%i, ", cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt);
+            write(g_save_data_fd, save_data_buf, len);
         } else {
             printf("# GPS sync is disabled\n");
+
+            // add by zhaoyu for save log json data at 2021.08.27
+            memset(save_data_buf, 0, sizeof(save_data_buf));
+            len = snprintf(save_data_buf, sizeof(save_data_buf), "\"gps_sync_enable\":%d, ", 0);
+            write(g_save_data_fd, save_data_buf, len);
         }
         pthread_mutex_lock(&mx_concent);
+#if ENABLE_TEMP_SENSOR
         i = lgw_get_temperature(&temperature);
+#endif
         pthread_mutex_unlock(&mx_concent);
+#if ENABLE_TEMP_SENSOR
         if (i != LGW_HAL_SUCCESS) {
             printf("### Concentrator temperature unknown ###\n");
         } else {
             printf("### Concentrator temperature: %.0f C ###\n", temperature);
         }
+#endif
         printf("##### END #####\n");
 
         /* generate a JSON report (will be sent to server by upstream thread) */
         pthread_mutex_lock(&mx_stat_rep);
         if (((gps_enabled == true) && (coord_ok == true)) || (gps_fake_enable == true)) {
+#if ENABLE_TEMP_SENSOR
             snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"lati\":%.5f,\"long\":%.5f,\"alti\":%i,\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%.1f}", stat_timestamp, cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, temperature);
+#else
+            snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"lati\":%.5f,\"long\":%.5f,\"alti\":%i,\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%.1f}", stat_timestamp, cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, 0.0);
+#endif
         } else {
+#if ENABLE_TEMP_SENSOR
             snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%.1f}", stat_timestamp, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, temperature);
+#else
+            snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%.1f}", stat_timestamp, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, 0.0);
+#endif
         }
         report_ready = true;
+
+        // add by zhaoyu for save log json data at 2021.08.27
+        memset(save_data_buf, 0, sizeof(save_data_buf));
+        len = snprintf(save_data_buf, sizeof(save_data_buf), "} \n");
+        write(g_save_data_fd, save_data_buf, len);
         pthread_mutex_unlock(&mx_stat_rep);
     }
 
@@ -1939,7 +2068,7 @@ int main(int argc, char ** argv)
 
     if (com_type == LGW_COM_SPI) {
         /* Board reset */
-        if (system("./reset_lgw.sh stop") != 0) {
+        if (system(LGW_RESET_SCRIPT_PATH" stop") != 0) {
             printf("ERROR: failed to reset SX1302, check your reset_lgw.sh script\n");
             exit(EXIT_FAILURE);
         }
@@ -2453,6 +2582,11 @@ void thread_up(void) {
 
         printf("\nJSON up: %s\n", (char *)(buff_up + 12)); /* DEBUG: display JSON payload */
 
+        // add by zhaoyu for save log json data at 2021.08.27
+        memset(save_data_buf, 0, sizeof(save_data_buf));
+        int len = snprintf(save_data_buf, sizeof(save_data_buf), "{\"json_up\"=\"%s\"} \n", (char *)(buff_up + 12));
+        write(g_save_up_data_fd, save_data_buf, len);
+
         /* send datagram to server */
         send(sock_up, (void *)buff_up, buff_index, 0);
         clock_gettime(CLOCK_MONOTONIC, &send_time);
@@ -2877,6 +3011,11 @@ void thread_down(void) {
             buff_down[msg_len] = 0; /* add string terminator, just to be safe */
             MSG("INFO: [down] PULL_RESP received  - token[%d:%d] :)\n", buff_down[1], buff_down[2]); /* very verbose */
             printf("\nJSON down: %s\n", (char *)(buff_down + 4)); /* DEBUG: display JSON payload */
+
+            // add by zhaoyu for save log json data at 2021.08.27
+            memset(save_data_buf, 0, sizeof(save_data_buf));
+            int len = snprintf(save_data_buf, sizeof(save_data_buf), "{\"json_down\"=\"%s\"} \n", (char *)(buff_down + 4));
+            write(g_save_down_data_fd, save_data_buf, len);
 
             /* initialize TX struct and try to parse JSON */
             memset(&txpkt, 0, sizeof txpkt);
