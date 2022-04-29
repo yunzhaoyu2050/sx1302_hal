@@ -1865,8 +1865,9 @@ int main(int argc, char ** argv)
         printf("# PUSH_DATA acknowledged: %.2f%%\n", 100.0 * up_ack_ratio);
 
         // add by zhaoyu for save log json data at 2021.08.26
+        // del %% at 2022.04.29
         memset(save_data_buf, 0, sizeof(save_data_buf));
-        int len = snprintf(save_data_buf, sizeof(save_data_buf), "{\"utc\":\"%s\", \"up_rf_rc\":%u, \"up_crcok\":%.2f%%, \"up_crcfa\":%.2f%%, \"up_crcno\":%.2f%%, \"up_rf_fo\":%u, \"up_rf_fo_bt\":%u, \"up_pushsent\":%u, \"up_pushsent_bt\":%u, \"up_pushack\":%.2f%%, " , 
+        int len = snprintf(save_data_buf, sizeof(save_data_buf), "{\"utc\":\"%s\", \"up_rf_rc\":%u, \"up_crcok\":%.2f, \"up_crcfa\":%.2f, \"up_crcno\":%.2f, \"up_rf_fo\":%u, \"up_rf_fo_bt\":%u, \"up_pushsent\":%u, \"up_pushsent_bt\":%u, \"up_pushack\":%.2f, " , 
             stat_timestamp, cp_nb_rx_rcv, 100.0 * rx_ok_ratio, 100.0 * rx_bad_ratio, 100.0 * rx_nocrc_ratio, cp_up_pkt_fwd, cp_up_payload_byte, cp_up_dgram_sent, cp_up_network_byte, 100.0 * up_ack_ratio);
         write(g_save_data_fd, save_data_buf, len);
 
@@ -1877,8 +1878,9 @@ int main(int argc, char ** argv)
         printf("# TX errors: %u\n", cp_nb_tx_fail);
 
         // add by zhaoyu for save log json data at 2021.08.27
+        // del %% at 2022.04.29
         memset(save_data_buf, 0, sizeof(save_data_buf));
-        len = snprintf(save_data_buf, sizeof(save_data_buf), "\"down_pullsent\":%u, \"down_pullack\":%.2f%%, \"down_pullrc\":%u, \"down_pullrc_bt\":%u, \"down_rf_sent\":%u, \"down_rf_sent_bt\":%u, \"down_txerror\":%u, " , 
+        len = snprintf(save_data_buf, sizeof(save_data_buf), "\"down_pullsent\":%u, \"down_pullack\":%.2f, \"down_pullrc\":%u, \"down_pullrc_bt\":%u, \"down_rf_sent\":%u, \"down_rf_sent_bt\":%u, \"down_txerror\":%u, " , 
             cp_dw_pull_sent, 100.0 * dw_ack_ratio, cp_dw_dgram_rcv, cp_dw_network_byte, (cp_nb_tx_ok+cp_nb_tx_fail), cp_dw_payload_byte, cp_nb_tx_fail);
         write(g_save_data_fd, save_data_buf, len);
 
